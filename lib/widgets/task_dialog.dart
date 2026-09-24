@@ -1,28 +1,23 @@
 import 'package:flutter/material.dart';
-import '../models/task.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class TaskDialog extends StatefulWidget {
+import '../models/task.dart';
+import '../providers/category_provider.dart';
+
+class TaskDialog extends ConsumerStatefulWidget {
   final Task? task;
 
   const TaskDialog({super.key, this.task});
 
   @override
-  State<TaskDialog> createState() => _TaskDialogState();
+  ConsumerState<TaskDialog> createState() => _TaskDialogState();
 }
 
-class _TaskDialogState extends State<TaskDialog> {
+class _TaskDialogState extends ConsumerState<TaskDialog> {
   late TextEditingController controller;
   DateTime? deadline;
 
   String category = "General";
-
-  final List<String> categories = [
-    "General",
-    "School",
-    "Work",
-    "Personal",
-    "Shopping",
-  ];
 
   @override
   void initState() {
@@ -54,6 +49,16 @@ class _TaskDialogState extends State<TaskDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Categories now come from the same provider the "Edit Categories"
+    // dialog writes to - so anything added/removed there shows up here too.
+    final categories = ref.watch(categoryProvider);
+
+    // Guard against: the task's saved category was deleted elsewhere,
+    // or categories haven't finished loading from the database yet.
+    final effectiveCategory = categories.contains(category)
+        ? category
+        : (categories.isNotEmpty ? categories.first : null);
+
     return AlertDialog(
       title: Text(
         widget.task == null ? "Add Task" : "Update Task",
@@ -72,7 +77,7 @@ class _TaskDialogState extends State<TaskDialog> {
           const SizedBox(height: 15),
 
           DropdownButtonFormField<String>(
-            initialValue: category,
+            initialValue: effectiveCategory,
             decoration: const InputDecoration(
               labelText: "Category",
               border: OutlineInputBorder(),
@@ -121,7 +126,7 @@ class _TaskDialogState extends State<TaskDialog> {
               Task(
                 title: controller.text.trim(),
                 deadline: deadline,
-                category: category,
+                category: effectiveCategory ?? "General",
               ),
             );
           },

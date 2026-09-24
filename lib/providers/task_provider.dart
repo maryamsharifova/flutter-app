@@ -3,18 +3,34 @@ import 'package:flutter_riverpod/legacy.dart';
 import '../models/task.dart';
 import '../services/database_helper.dart';
 
-/// Holds the list of tasks and persists them to a local SQLite database.
+/// Holds the list of tasks BELONGING TO THE CURRENTLY LOGGED-IN USER,
+/// persisted to a local SQLite database.
+///
+/// Unlike before, this no longer loads automatically on creation -
+/// there's no user to load tasks FOR until someone logs in. Call
+/// loadTasksForUser(userId) right after a successful login/signup.
 class TaskNotifier extends StateNotifier<List<Task>> {
-  TaskNotifier() : super([]) {
-    loadTasks();
+  TaskNotifier() : super([]);
+
+  int? _currentUserId;
+
+  Future<void> loadTasksForUser(int userId) async {
+    _currentUserId = userId;
+    state = await DatabaseHelper.instance.getTasks(userId);
   }
 
-  Future<void> loadTasks() async {
-    state = await DatabaseHelper.instance.getTasks();
+  /// Clears in-memory tasks (call this on logout so the next person
+  /// who logs in doesn't briefly see the previous user's tasks).
+  void clear() {
+    _currentUserId = null;
+    state = [];
   }
 
   Future<void> addTask(Task task) async {
-    final id = await DatabaseHelper.instance.insertTask(task);
+    final userId = _currentUserId;
+    if (userId == null) return;
+
+    final id = await DatabaseHelper.instance.insertTask(task, userId);
     task.id = id;
     state = [...state, task];
   }

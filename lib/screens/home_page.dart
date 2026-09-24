@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/task.dart';
 import '../providers/task_provider.dart';
+import '../providers/category_provider.dart';
+import '../providers/auth_provider.dart';
+import '../auth/login_page.dart';
 import '../widgets/task_card.dart';
 import '../widgets/task_dialog.dart';
+import '../widgets/category_manager_dialog.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -14,19 +18,10 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  // Search/category are transient UI state - fine to keep local.
-  // Only task DATA moved into Riverpod.
+  // Search/category-filter are transient UI state - fine to keep local.
+  // The category LIST itself now lives in categoryProvider (SQLite-backed).
   String searchText = "";
   String selectedCategory = "All";
-
-  final List<String> categories = [
-    "All",
-    "General",
-    "School",
-    "Work",
-    "Personal",
-    "Shopping",
-  ];
 
   // Pastel renkler
   static const Color backgroundPink = Color(0xFFFFF6F9);
@@ -34,9 +29,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   static const Color pastelPink = Color(0xFFD98FA6);
   static const Color darkText = Color(0xFF403238);
   static const Color lightText = Color(0xFF8C8085);
-
-  // No initState/loadTasks needed anymore -
-  // TaskNotifier loads itself when the provider is first created.
 
   Future<void> addTask() async {
     final Task? task = await showDialog(
@@ -68,11 +60,39 @@ class _HomePageState extends ConsumerState<HomePage> {
     await ref.read(taskProvider.notifier).toggleTask(task);
   }
 
+  Future<void> manageCategories() async {
+    await showDialog(
+      context: context,
+      builder: (_) => const CategoryManagerDialog(),
+    );
+  }
+
+  void logout() {
+    ref.read(taskProvider.notifier).clear();
+    ref.read(authProvider.notifier).logout();
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Watching taskProvider means this widget rebuilds automatically
-    // whenever the task list changes - no setState needed.
+    // Watching taskProvider/categoryProvider means this widget rebuilds
+    // automatically whenever either changes - no setState needed for them.
     final allTasks = ref.watch(taskProvider);
+    final userCategories = ref.watch(categoryProvider);
+
+    // "All" is a UI-only filter option, never stored in the database.
+    final displayCategories = ["All", ...userCategories];
+
+    // If a category was deleted while it was selected, fall back to "All"
+    // without needing setState (avoids mutating state during build).
+    final effectiveSelectedCategory =
+        displayCategories.contains(selectedCategory)
+            ? selectedCategory
+            : "All";
 
     final tasks = allTasks.where((task) {
       final matchesSearch = task.title
@@ -80,8 +100,8 @@ class _HomePageState extends ConsumerState<HomePage> {
           .contains(searchText.toLowerCase());
 
       final matchesCategory =
-          selectedCategory == "All" ||
-          task.category == selectedCategory;
+          effectiveSelectedCategory == "All" ||
+          task.category == effectiveSelectedCategory;
 
       return matchesSearch && matchesCategory;
     }).toList();
@@ -140,32 +160,50 @@ class _HomePageState extends ConsumerState<HomePage> {
                     ),
                   ),
 
-                  // ADD BUTTON
-                  ElevatedButton.icon(
-                    onPressed: addTask,
-                    icon: const Icon(
-                      Icons.add,
-                      size: 23,
-                    ),
-                    label: const Text(
-                      "Add",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // LOGOUT BUTTON
+                      IconButton(
+                        onPressed: logout,
+                        icon: const Icon(
+                          Icons.logout,
+                          color: lightText,
+                          size: 22,
+                        ),
+                        visualDensity: VisualDensity.compact,
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: pastelPink,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 15,
+
+                      const SizedBox(height: 6),
+
+                      // ADD BUTTON
+                      ElevatedButton.icon(
+                        onPressed: addTask,
+                        icon: const Icon(
+                          Icons.add,
+                          size: 23,
+                        ),
+                        label: const Text(
+                          "Add",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: pastelPink,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 15,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -228,11 +266,40 @@ class _HomePageState extends ConsumerState<HomePage> {
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 22),
-                itemCount: categories.length,
+                // +1 for the trailing "edit categories" chip
+                itemCount: displayCategories.length + 1,
                 itemBuilder: (context, index) {
-                  final category = categories[index];
+                  // Last item: the pencil / edit-categories chip
+                  if (index == displayCategories.length) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: GestureDetector(
+                        onTap: manageCategories,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: pastelGreen,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFFD3E5D8),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: darkText,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final category = displayCategories[index];
                   final isSelected =
-                      selectedCategory == category;
+                      effectiveSelectedCategory == category;
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 10),

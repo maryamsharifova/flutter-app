@@ -4,18 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../providers/task_provider.dart';
 import '../screens/home_page.dart';
-import 'sign_up_page.dart';
 
-class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key});
+class SignUpPage extends ConsumerStatefulWidget {
+  const SignUpPage({super.key});
 
   @override
-  ConsumerState<LoginPage> createState() => _LoginPageState();
+  ConsumerState<SignUpPage> createState() => _SignUpPageState();
 }
 
-class _LoginPageState extends ConsumerState<LoginPage> {
+class _SignUpPageState extends ConsumerState<SignUpPage> {
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final TextEditingController confirmPasswordController =
+      TextEditingController();
 
   bool obscurePassword = true;
   bool isLoading = false;
@@ -64,13 +65,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 
-  Future<void> login() async {
+  Future<void> signUp() async {
+    if (passwordController.text != confirmPasswordController.text) {
+      setState(() {
+        errorText = "Passwords don't match";
+      });
+      return;
+    }
+
     setState(() {
       isLoading = true;
       errorText = null;
     });
 
-    final error = await ref.read(authProvider.notifier).login(
+    final error = await ref.read(authProvider.notifier).signUp(
           usernameController.text,
           passwordController.text,
         );
@@ -85,7 +93,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       return;
     }
 
-    // Load THIS user's tasks before navigating to HomePage.
+    // Brand new user - no tasks yet, but this sets which user
+    // future addTask calls should be saved under.
     final user = ref.read(authProvider);
     if (user != null) {
       await ref.read(taskProvider.notifier).loadTasksForUser(user.id);
@@ -109,9 +118,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // =========================
-              // LOGO / ICON
-              // =========================
               Container(
                 width: 96,
                 height: 96,
@@ -120,19 +126,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.check_circle,
-                  size: 52,
+                  Icons.person_add_alt_1,
+                  size: 48,
                   color: Colors.white,
                 ),
               ),
 
               const SizedBox(height: 28),
 
-              // =========================
-              // TITLE
-              // =========================
               const Text(
-                "Welcome back",
+                "Get started",
                 style: TextStyle(
                   color: pastelPink,
                   fontSize: 17,
@@ -143,7 +146,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               const SizedBox(height: 5),
 
               const Text(
-                "Login",
+                "Sign Up",
                 style: TextStyle(
                   color: darkText,
                   fontSize: 34,
@@ -154,18 +157,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               const SizedBox(height: 6),
 
               const Text(
-                "Sign in to manage your tasks",
+                "Create an account to save your tasks",
                 style: TextStyle(
                   color: lightText,
                   fontSize: 15,
                 ),
+                textAlign: TextAlign.center,
               ),
 
               const SizedBox(height: 36),
 
-              // =========================
-              // USERNAME FIELD
-              // =========================
               TextField(
                 controller: usernameController,
                 decoration: _fieldDecoration(
@@ -176,13 +177,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
               const SizedBox(height: 18),
 
-              // =========================
-              // PASSWORD FIELD
-              // =========================
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
-                onSubmitted: (_) => login(),
                 decoration: _fieldDecoration(
                   label: "Password",
                   icon: Icons.lock_outline,
@@ -202,6 +199,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
               ),
 
+              const SizedBox(height: 18),
+
+              TextField(
+                controller: confirmPasswordController,
+                obscureText: obscurePassword,
+                onSubmitted: (_) => signUp(),
+                decoration: _fieldDecoration(
+                  label: "Confirm Password",
+                  icon: Icons.lock_outline,
+                ),
+              ),
+
               if (errorText != null) ...[
                 const SizedBox(height: 14),
                 Text(
@@ -216,13 +225,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
               const SizedBox(height: 32),
 
-              // =========================
-              // LOGIN BUTTON
-              // =========================
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: isLoading ? null : login,
+                  onPressed: isLoading ? null : signUp,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: pastelPink,
                     foregroundColor: Colors.white,
@@ -242,7 +248,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           ),
                         )
                       : const Text(
-                          "Login",
+                          "Sign Up",
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -253,20 +259,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
               const SizedBox(height: 18),
 
-              // =========================
-              // SIGN UP LINK
-              // =========================
               TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SignUpPage(),
-                    ),
-                  );
-                },
+                onPressed: () => Navigator.pop(context),
                 child: const Text(
-                  "Don't have an account? Sign Up",
+                  "Already have an account? Login",
                   style: TextStyle(
                     color: pastelPink,
                     fontWeight: FontWeight.w600,
